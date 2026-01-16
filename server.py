@@ -7,6 +7,46 @@ app = Flask(__name__)
 CORS(app)
 downloader = YoutubeCommentDownloader()
 
+def format_video(v):
+    try:
+        # Extract individual fields with extreme safety
+        video_id = v.get('id')
+        title = v.get('title', 'Unknown Title')
+        
+        # Safe thumbnail extraction
+        thumbnails = v.get('thumbnails', [])
+        thumbnail = ''
+        if thumbnails and isinstance(thumbnails, list) and len(thumbnails) > 0:
+            thumbnail = thumbnails[0].get('url', '')
+
+        # Safe channel/author extraction
+        channel_data = v.get('channel') or v.get('author') or {}
+        channel_name = channel_data.get('name', 'Unknown')
+        
+        # Other fields
+        duration = v.get('duration', 'N/A')
+        
+        view_count_data = v.get('viewCount') or {}
+        if isinstance(view_count_data, dict):
+            views = view_count_data.get('short', 'Unknown')
+        else:
+            views = str(view_count_data)
+            
+        uploaded = v.get('publishedTime', 'Unknown')
+        
+        return {
+            'id': video_id,
+            'title': title,
+            'thumbnail': thumbnail,
+            'channel': channel_name,
+            'duration': duration,
+            'views': views,
+            'uploaded': uploaded
+        }
+    except Exception as e:
+        print(f"Error formatting video: {e}")
+        return None
+
 @app.route('/api/trending', methods=['GET'])
 def get_trending():
     try:
@@ -16,20 +56,14 @@ def get_trending():
         
         videos = []
         for v in results.get('result', []):
-            try:
-                videos.append({
-                    'id': v['id'],
-                    'title': v['title'],
-                    'thumbnail': v['thumbnails'][0]['url'] if v['thumbnails'] else '',
-                    'channel': v.get('channel', {}).get('name', 'Unknown') if v.get('channel') else v.get('author', {}).get('name', 'Unknown'),
-                    'duration': v.get('duration', 'N/A'),
-                    'views': v.get('viewCount', {}).get('short', 'Unknown') if v.get('viewCount') else 'Unknown',
-                    'uploaded': v.get('publishedTime', 'Recent')
-                })
-            except:
-                continue
+            formatted = format_video(v)
+            if formatted:
+                videos.append(formatted)
+                
         return jsonify({'videos': videos})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Trending error: {e}")
         return jsonify({'error': str(e)}), 500
 
@@ -47,19 +81,9 @@ def search():
         
         videos = []
         for v in results.get('result', []):
-            try:
-                videos.append({
-                    'id': v['id'],
-                    'title': v['title'],
-                    'thumbnail': v['thumbnails'][0]['url'] if v['thumbnails'] else '',
-                    'channel': v.get('channel', {}).get('name', 'Unknown') if v.get('channel') else v.get('author', {}).get('name', 'Unknown'),
-                    'duration': v.get('duration', 'N/A'),
-                    'views': v.get('viewCount', {}).get('short', 'Unknown') if v.get('viewCount') else 'Unknown',
-                    'uploaded': v.get('publishedTime', 'Unknown')
-                })
-            except Exception as item_err:
-                print(f"Error parsing item: {item_err}")
-                continue
+            formatted = format_video(v)
+            if formatted:
+                videos.append(formatted)
             
         return jsonify({'videos': videos})
     except Exception as e:
@@ -77,26 +101,17 @@ def get_video(id):
         # Format related videos
         related = []
         for r in video.get('suggestions', []):
-            try:
-                related.append({
-                    'id': r['id'],
-                    'title': r['title'],
-                    'thumbnail': r['thumbnails'][0]['url'] if r['thumbnails'] else '',
-                    'channel': r.get('channel', {}).get('name', 'Unknown') if r.get('channel') else r.get('author', {}).get('name', 'Unknown'),
-                    'duration': r.get('duration', 'N/A'),
-                    'views': r.get('viewCount', {}).get('short', 'Unknown') if r.get('viewCount') else '',
-                    'uploaded': r.get('publishedTime', '')
-                })
-            except:
-                continue
+            formatted = format_video(r)
+            if formatted:
+                related.append(formatted)
             
         return jsonify({
             'id': video.get('id'),
             'title': video.get('title'),
             'description': video.get('description', ''),
-            'channel': video.get('channel', {}).get('name', 'Unknown') if video.get('channel') else video.get('author', {}).get('name', 'Unknown'),
-            'channelUrl': video.get('channel', {}).get('link', '') if video.get('channel') else video.get('author', {}).get('link', ''),
-            'views': video.get('viewCount', {}).get('text', '0') if video.get('viewCount') else '0',
+            'channel': (video.get('channel') or video.get('author') or {}).get('name', 'Unknown'),
+            'channelUrl': (video.get('channel') or video.get('author') or {}).get('link', ''),
+            'views': (video.get('viewCount') or {}).get('text', '0') if isinstance(video.get('viewCount'), dict) else '0',
             'uploaded': video.get('publishedTime', ''),
             'duration': video.get('duration', {}).get('label', 'N/A') if isinstance(video.get('duration'), dict) else video.get('duration', 'N/A'),
             'related': related
@@ -129,5 +144,4 @@ def get_comments(id):
         return jsonify({'comments': [], 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🚀 Python Server running at http://localhost:3001")
     app.run()
