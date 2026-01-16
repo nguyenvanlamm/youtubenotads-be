@@ -11,28 +11,28 @@ def format_video(v):
     try:
         # Extract individual fields with extreme safety
         video_id = v.get('id')
-        title = v.get('title') or 'Unknown Title'
+        title = v.get('title', 'Unknown Title')
         
         # Safe thumbnail extraction
-        thumbnails = v.get('thumbnails') or []
+        thumbnails = v.get('thumbnails', [])
         thumbnail = ''
         if thumbnails and isinstance(thumbnails, list) and len(thumbnails) > 0:
-            thumbnail = thumbnails[0].get('url') or ''
+            thumbnail = thumbnails[0].get('url', '')
 
         # Safe channel/author extraction
         channel_data = v.get('channel') or v.get('author') or {}
-        channel_name = channel_data.get('name') or 'Unknown'
+        channel_name = channel_data.get('name', 'Unknown')
         
         # Other fields
-        duration = v.get('duration') or 'N/A'
+        duration = v.get('duration', 'N/A')
         
         view_count_data = v.get('viewCount') or {}
         if isinstance(view_count_data, dict):
-            views = view_count_data.get('short') or 'Unknown'
+            views = view_count_data.get('short', 'Unknown')
         else:
-            views = str(view_count_data) if view_count_data is not None else 'Unknown'
+            views = str(view_count_data)
             
-        uploaded = v.get('publishedTime') or 'Unknown'
+        uploaded = v.get('publishedTime', 'Unknown')
         
         return {
             'id': video_id,
