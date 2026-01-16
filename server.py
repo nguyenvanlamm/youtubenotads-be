@@ -130,4 +130,4 @@ def get_comments(id):
 
 if __name__ == '__main__':
     print("🚀 Python Server running at http://localhost:3001")
-    app.run()
+    app.run(port=3001)
