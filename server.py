@@ -50,10 +50,21 @@ def format_video(v):
 @app.route('/api/trending', methods=['GET'])
 def get_trending():
     try:
-        # Since Trending class doesn't exist, we search for a generic trending keyword
-        trending_search = VideosSearch('trending music', limit=12)
-        results = trending_search.result()
+        # Primary search: trending music with explicit region
+        try:
+            trending_search = VideosSearch('trending music', limit=12, language='en', region='US')
+            results = trending_search.result()
+        except Exception as e:
+            print(f"Primary trending search failed: {e}. Trying fallback...")
+            # Fallback: simple trending keyword which seems more stable
+            trending_search = VideosSearch('trending', limit=12)
+            results = trending_search.result()
         
+        # Check if results is None or missing the 'result' key
+        if not results or not isinstance(results, dict) or 'result' not in results:
+            print("Warning: YouTube search returned unexpected results format")
+            return jsonify({'videos': []})
+
         videos = []
         for v in results.get('result', []):
             formatted = format_video(v)
@@ -65,7 +76,8 @@ def get_trending():
         import traceback
         traceback.print_exc()
         print(f"Trending error: {e}")
-        return jsonify({'error': str(e)}), 500
+        # Return empty list instead of 500 to keep the UI functional
+        return jsonify({'videos': [], 'error': str(e)}), 200
 
 @app.route('/api/search', methods=['GET'])
 def search():
