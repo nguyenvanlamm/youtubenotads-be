@@ -1,6 +1,5 @@
 flask
 flask-cors
-youtube-search-python
 youtube-comment-downloader
 httpx<0.28
 gunicorn
