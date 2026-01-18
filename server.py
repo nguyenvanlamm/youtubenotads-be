@@ -2,13 +2,17 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_POPULAR
+import yt_dlp
 
 app = Flask(__name__)
 CORS(app)
 downloader = YoutubeCommentDownloader()
 
-@app.route('/api/proxy', methods=['GET'])
+@app.route('/api/proxy', methods=['GET', 'OPTIONS'])
 def proxy():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     url = request.args.get('url')
     if not url:
         return jsonify({'error': 'URL is required'}), 400
@@ -31,6 +35,33 @@ def proxy():
         return Response(resp.content, resp.status_code, headers)
     except Exception as e:
         print(f"Proxy error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/video/<id>', methods=['GET'])
+def get_video_info(id):
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            url = f'https://www.youtube.com/watch?v={id}'
+            info = ydl.extract_info(url, download=False)
+            
+            # Format output for frontend
+            return jsonify({
+                'id': info.get('id'),
+                'title': info.get('title'),
+                'description': info.get('description', ''),
+                'channel': info.get('uploader', 'Unknown'),
+                'views': f"{info.get('view_count', 0):,}",
+                'uploaded': info.get('upload_date', ''),
+                'duration': str(info.get('duration', 0)),
+                'related': [] # For now
+            })
+    except Exception as e:
+        print(f"yt-dlp error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/comments/<id>', methods=['GET'])

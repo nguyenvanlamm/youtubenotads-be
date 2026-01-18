@@ -3,3 +3,4 @@ flask-cors
 youtube-comment-downloader
 httpx<0.28
 gunicorn
+yt-dlp
