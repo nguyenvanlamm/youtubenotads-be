@@ -1,11 +1,38 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from youtubesearchpython import VideosSearch, Video
-from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_POPULAR
+import httpx
+import json
 
 app = Flask(__name__)
 CORS(app)
 downloader = YoutubeCommentDownloader()
+
+def inner_tube_request(endpoint, payload):
+    url = f"https://www.youtube.com/youtubei/v1/{endpoint}?key=AIzaSyB5BoZcW8y7_Gk"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json",
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/"
+    }
+    client_context = {
+        "context": {
+            "client": {
+                "clientName": "WEB",
+                "clientVersion": "2.20231201.01.00",
+                "hl": "en",
+                "gl": "US",
+                "utcOffsetMinutes": 0
+            }
+        }
+    }
+    client_context.update(payload)
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(url, json=client_context, headers=headers)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"InnerTube error ({endpoint}): {str(e)}")
+        return None
 
 def format_video(v):
     try:
@@ -105,31 +132,32 @@ def search():
 @app.route('/api/video/<id>', methods=['GET'])
 def get_video(id):
     try:
-        # Get video details
-        video = Video.getInfo(id)
-        if not video:
-             return jsonify({'error': 'Video not found'}), 404
-             
-        # Format related videos
-        related = []
-        for r in video.get('suggestions', []):
-            formatted = format_video(r)
-            if formatted:
-                related.append(formatted)
-            
+        # Use direct InnerTube Player API for stable metadata
+        data = inner_tube_request("player", {"videoId": id})
+        if not data:
+            # Fallback to library if InnerTube fails
+            video = Video.getInfo(id)
+            if not video:
+                return jsonify({'error': 'Video not found'}), 404
+            data = video # Use library data as backup
+        
+        # Extract from InnerTube format or library fallback
+        video_details = data.get('videoDetails', {})
+        if not video_details and 'title' in data: # Library format
+            video_details = data
+
         return jsonify({
-            'id': str(video.get('id', id)),
-            'title': str(video.get('title', 'Unknown Title')),
-            'description': str(video.get('description', '')),
-            'channel': str((video.get('channel') or video.get('author') or {}).get('name', 'Unknown')),
-            'channelUrl': str((video.get('channel') or video.get('author') or {}).get('link', '')),
-            'views': str((video.get('viewCount') or {}).get('text', '0') if isinstance(video.get('viewCount'), dict) else '0'),
-            'uploaded': str(video.get('publishedTime', '')),
-            'duration': str(video.get('duration', {}).get('label', 'N/A') if isinstance(video.get('duration'), dict) else video.get('duration', 'N/A')),
-            'related': related
+            'id': str(video_details.get('videoId', id)),
+            'title': str(video_details.get('title', 'Unknown Title')),
+            'description': str(video_details.get('shortDescription', video_details.get('description', ''))),
+            'channel': str(video_details.get('author', 'Unknown')),
+            'views': f"{int(video_details.get('viewCount', 0)):,}" if str(video_details.get('viewCount', '0')).isdigit() else str(video_details.get('viewCount', '0')),
+            'uploaded': '', 
+            'duration': str(video_details.get('lengthSeconds', 'N/A')),
+            'related': []
         })
     except Exception as e:
-        print(f"Video info error: {e}")
+        print(f"Video info error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/comments/<id>', methods=['GET'])
