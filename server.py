@@ -1,5 +1,9 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import httpx
 import json
+from youtubesearchpython import VideosSearch, Video
+from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_POPULAR
 
 app = Flask(__name__)
 CORS(app)
