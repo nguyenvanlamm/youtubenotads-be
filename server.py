@@ -138,8 +138,61 @@ def get_video(id):
     try:
         # Use direct InnerTube Player API for stable metadata
         data = inner_tube_request("player", {"videoId": id})
+        if not data or not data.get('videoDetails'):
+            print("Player endpoint failed/incomplete. Trying 'next' endpoint...")
+            next_data = inner_tube_request("next", {"videoId": id})
+            if next_data:
+                # Extract metadata from next response
+                try:
+                    results = next_data.get('contents', {}).get('twoColumnWatchNextResults', {}).get('results', {}).get('results', {}).get('contents', [])
+                    primary = None
+                    secondary = None
+                    for item in results:
+                        if 'videoPrimaryInfoRenderer' in item:
+                            primary = item['videoPrimaryInfoRenderer']
+                        if 'videoSecondaryInfoRenderer' in item:
+                            secondary = item['videoSecondaryInfoRenderer']
+                    
+                    if primary:
+                        # Extract title
+                        title_runs = primary.get('title', {}).get('runs', [])
+                        title = "".join([r.get('text', '') for r in title_runs])
+                        
+                        # Extract views
+                        view_count = primary.get('viewCount', {}).get('videoViewCountRenderer', {}).get('viewCount', {}).get('simpleText', '0 views')
+                        
+                        # Extract date
+                        date = primary.get('dateText', {}).get('simpleText', '')
+                        
+                        # Extract channel and description from secondary
+                        channel = "Unknown"
+                        description = ""
+                        if secondary:
+                            owner_runs = secondary.get('owner', {}).get('videoOwnerRenderer', {}).get('title', {}).get('runs', [])
+                            channel = "".join([r.get('text', '') for r in owner_runs])
+                            
+                            desc_runs = secondary.get('attributedDescription', {}).get('content', '')
+                            # Description often comes as a string in newer api or runs in older
+                            if isinstance(desc_runs, list):
+                                description = "".join([r.get('text', '') for r in desc_runs])
+                            else:
+                                description = str(desc_runs)
+
+                        return jsonify({
+                            'id': id,
+                            'title': title,
+                            'description': description,
+                            'channel': channel,
+                            'views': view_count,
+                            'uploaded': date,
+                            'duration': 'N/A', # Duration not easily available in next endpoint without complex parsing
+                            'related': []
+                        })
+                except Exception as e:
+                    print(f"Error parsing next endpoint for metadata: {e}")
+
+        # Fallback to library if InnerTube fails
         if not data:
-            # Fallback to library if InnerTube fails
             video = Video.getInfo(id)
             if not video:
                 return jsonify({'error': 'Video not found'}), 404
