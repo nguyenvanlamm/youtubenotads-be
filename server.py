@@ -35,13 +35,13 @@ def format_video(v):
         uploaded = v.get('publishedTime', 'Unknown')
         
         return {
-            'id': video_id,
-            'title': title,
-            'thumbnail': thumbnail,
-            'channel': channel_name,
-            'duration': duration,
-            'views': views,
-            'uploaded': uploaded
+            'id': str(video_id) if video_id else '',
+            'title': str(title),
+            'thumbnail': str(thumbnail),
+            'channel': str(channel_name),
+            'duration': str(duration),
+            'views': str(views),
+            'uploaded': str(uploaded)
         }
     except Exception as e:
         print(f"Error formatting video: {e}")
@@ -55,7 +55,7 @@ def get_trending():
             trending_search = VideosSearch('trending music', limit=12, language='en', region='US')
             results = trending_search.result()
         except Exception as e:
-            print(f"Primary trending search failed: {e}. Trying fallback...")
+            print(f"Primary trending search failed: {str(e)}. Trying fallback...")
             # Fallback: simple trending keyword which seems more stable
             trending_search = VideosSearch('trending', limit=12)
             results = trending_search.result()
@@ -118,14 +118,14 @@ def get_video(id):
                 related.append(formatted)
             
         return jsonify({
-            'id': video.get('id'),
-            'title': video.get('title'),
-            'description': video.get('description', ''),
-            'channel': (video.get('channel') or video.get('author') or {}).get('name', 'Unknown'),
-            'channelUrl': (video.get('channel') or video.get('author') or {}).get('link', ''),
-            'views': (video.get('viewCount') or {}).get('text', '0') if isinstance(video.get('viewCount'), dict) else '0',
-            'uploaded': video.get('publishedTime', ''),
-            'duration': video.get('duration', {}).get('label', 'N/A') if isinstance(video.get('duration'), dict) else video.get('duration', 'N/A'),
+            'id': str(video.get('id', id)),
+            'title': str(video.get('title', 'Unknown Title')),
+            'description': str(video.get('description', '')),
+            'channel': str((video.get('channel') or video.get('author') or {}).get('name', 'Unknown')),
+            'channelUrl': str((video.get('channel') or video.get('author') or {}).get('link', '')),
+            'views': str((video.get('viewCount') or {}).get('text', '0') if isinstance(video.get('viewCount'), dict) else '0'),
+            'uploaded': str(video.get('publishedTime', '')),
+            'duration': str(video.get('duration', {}).get('label', 'N/A') if isinstance(video.get('duration'), dict) else video.get('duration', 'N/A')),
             'related': related
         })
     except Exception as e:
