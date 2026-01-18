@@ -167,24 +167,128 @@ def get_video(id):
 @app.route('/api/comments/<id>', methods=['GET'])
 def get_comments(id):
     try:
-        # Fetching comments (first 50)
-        comments_gen = downloader.get_comments_from_url(f'https://www.youtube.com/watch?v={id}', sort_by=SORT_BY_POPULAR)
-        
+        print(f"Fetching comments for {id}...")
+        # Step 1: Get the initial next response to find the comments continuation token
+        initial_data = inner_tube_request("next", {"videoId": id})
+        if not initial_data:
+             print("No initial data from InnerTube")
+             return jsonify({'comments': []})
+
+        continuation = None
+        # Deep search for the continuation token in the initial response
+        try:
+            results = initial_data.get('contents', {}).get('twoColumnWatchNextResults', {}).get('results', {}).get('results', {}).get('contents', [])
+            print(f"Searching {len(results)} items in initial response")
+            for item in results:
+                if 'itemSectionRenderer' in item:
+                    contents = item['itemSectionRenderer'].get('contents', [])
+                    print(f"Found itemSectionRenderer with {len(contents)} contents")
+                    for c in contents:
+                        if 'continuationItemRenderer' in c:
+                            continuation = c['continuationItemRenderer']['continuationEndpoint']['continuationCommand']['token']
+                            print(f"Found continuation token: {continuation[:20]}...")
+                            break
+                if continuation: break
+        except Exception as e:
+            print(f"Error searching for continuation: {e}")
+            pass
+            
+        if not continuation:
+            print("No continuation token found")
+            return jsonify({'comments': []})
+            
+        # Step 2: Fetch the actual comments using the token
+        comments_data = inner_tube_request("next", {"continuation": continuation})
+        if not comments_data:
+             print("No data from comments request")
+             return jsonify({'comments': []})
+             
         comments = []
-        import itertools
-        for comment in itertools.islice(comments_gen, 50):
-            comments.append({
-                'id': comment['cid'],
-                'author': comment['author'],
-                'text': comment['text'],
-                'time': comment['time'],
-                'authorThumb': comment['photo'],
-                'likes': comment['votes']
-            })
+        
+        # Method 1: Check for frameworkUpdates (New Format)
+        framework_updates = comments_data.get('frameworkUpdates', {})
+        entity_batch_update = framework_updates.get('entityBatchUpdate', {})
+        mutations = entity_batch_update.get('mutations', [])
+        
+        if mutations:
+            print(f"Found {len(mutations)} mutations in frameworkUpdates")
+            for mutation in mutations:
+                payload = mutation.get('payload', {})
+                if 'commentEntityPayload' in payload:
+                    cep = payload['commentEntityPayload']
+                    properties = cep.get('properties', {})
+                    author_info = cep.get('author', {})
+                    toolbar = cep.get('toolbar', {})
+                    
+                    # Extract fields
+                    cid = properties.get('commentId', '')
+                    author = author_info.get('displayName', 'Unknown')
+                    avatar = author_info.get('avatarThumbnailUrl', '')
+                    time_published = properties.get('publishedTime', '')
+                    content_body = properties.get('content', {}).get('content', '')
+                    
+                    # Likes are tricky in this format
+                    likes = toolbar.get('likeCountLiked', '0')
+                    if not likes or likes.strip() == '':
+                        likes = '0'
+                        
+                    comments.append({
+                        'id': cid,
+                        'author': author,
+                        'text': content_body,
+                        'time': time_published,
+                        'authorThumb': avatar,
+                        'likes': likes
+                    })
+            print(f"Parsed {len(comments)} comments from frameworkUpdates")
+
+        # Method 2: Old Format (Fallback)
+        if not comments:
+            try:
+                # The structure for continuation response is usually here
+                on_response = comments_data.get('onResponseReceivedEndpoints', [])
+                batch = []
+                for endpoint in on_response:
+                    if 'appendContinuationItemsAction' in endpoint:
+                        batch.extend(endpoint['appendContinuationItemsAction'].get('continuationItems', []))
+                    elif 'reloadContinuationItemsCommand' in endpoint:
+                        batch.extend(endpoint['reloadContinuationItemsCommand'].get('continuationItems', []))
+
+                print(f"Found {len(batch)} items in legacy batch")
+
+                for item in batch:
+                    comment_thread = item.get('commentThreadRenderer', {})
+                    comment = comment_thread.get('comment', {}).get('commentRenderer', {})
+                    if not comment: continue
+                    
+                    text_runs = comment.get('contentText', {}).get('runs', [])
+                    text = "".join([r.get('text', '') for r in text_runs])
+                    
+                    author = comment.get('authorText', {}).get('simpleText', 'Unknown')
+                    time = comment.get('publishedTimeText', {}).get('runs', [{}])[0].get('text', '')
+                    likes = comment.get('voteCount', {}).get('simpleText', '0')
+                    cid = comment.get('commentId', '')
+                    
+                    thumbnails = comment.get('authorThumbnail', {}).get('thumbnails', [])
+                    authorThumb = thumbnails[0].get('url', '') if thumbnails else ''
+                    
+                    comments.append({
+                        'id': cid,
+                        'author': author,
+                        'text': text,
+                        'time': time,
+                        'authorThumb': authorThumb,
+                        'likes': likes
+                    })
+                if len(comments) > 0:
+                    print(f"Parsed {len(comments)} comments from legacy format")
+            except Exception as e:
+                print(f"Error parsing legacy comments json: {e}")
             
         return jsonify({'comments': comments})
+
     except Exception as e:
-        print(f"Comments error: {e}")
+        print(f"Comments error: {str(e)}")
         return jsonify({'comments': [], 'error': str(e)}), 500
 
 if __name__ == '__main__':
