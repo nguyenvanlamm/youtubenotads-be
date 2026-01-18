@@ -3,11 +3,9 @@ from flask_cors import CORS
 import httpx
 import json
 from youtubesearchpython import VideosSearch, Video
-from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_POPULAR
 
 app = Flask(__name__)
 CORS(app)
-downloader = YoutubeCommentDownloader()
 
 def inner_tube_request(endpoint, payload):
     url = f"https://www.youtube.com/youtubei/v1/{endpoint}?key=AIzaSyB5BoZcW8y7_Gk"
